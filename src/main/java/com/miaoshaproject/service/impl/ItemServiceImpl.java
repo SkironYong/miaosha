@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.annotation.Resource;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -27,13 +28,13 @@ public class ItemServiceImpl implements ItemService {
     @Autowired
     private ValidatorImpl validator;
 
-    @Autowired
+    @Resource
     private ItemDOMapper itemDOMapper;
 
-    @Autowired
+    @Resource
     private ItemStockDOMapper itemStockDOMapper;
 
-    @Autowired
+    @Resource
     PromoService promoService;
 
 

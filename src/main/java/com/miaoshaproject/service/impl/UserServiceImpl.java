@@ -17,13 +17,15 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.annotation.Resource;
+
 @Service
 public class UserServiceImpl implements UserService {
 
-    @Autowired
+    @Resource
     private UserDOMapper userDOMapper;
 
-    @Autowired
+    @Resource
     private UserPasswordDOMapper userPasswordDOMapper;
 
     @Autowired
