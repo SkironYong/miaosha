@@ -3,25 +3,42 @@ package com.miaoshaproject.controller;
 import com.miaoshaproject.controller.viewobject.ItemVO;
 import com.miaoshaproject.error.BusinessException;
 import com.miaoshaproject.response.CommonReturnType;
+import com.miaoshaproject.service.CacheService;
+import com.miaoshaproject.service.PromoService;
 import com.miaoshaproject.service.impl.ItemServiceImpl;
 import com.miaoshaproject.service.model.ItemModel;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.view.RedirectView;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+/**
+ * @author HP
+ */
 @Controller
 @RequestMapping("/item")
 @CrossOrigin(allowCredentials = "true",allowedHeaders = "*")
 public class ItemController extends BaseController {
     @Autowired
     private ItemServiceImpl itemService;
+
+    @Autowired
+    private RedisTemplate redisTemplate;
+
+    @Autowired
+    private CacheService cacheService;
+
+    @Autowired
+    private PromoService promoService;
 
     //创建商品的controller
     @RequestMapping(value = "/create",method = RequestMethod.POST)
@@ -42,13 +59,32 @@ public class ItemController extends BaseController {
         ItemModel itemModelForReturn = itemService.createItem(itemModel);
         ItemVO itemVO = this.convertVOFromModel(itemModelForReturn);
         return CommonReturnType.create(itemVO);
-    }
+}
 
     //商品详情页浏览
     @RequestMapping(value = "/get",method = RequestMethod.GET) //浏览时服务端用GET请求
     @ResponseBody
     public CommonReturnType getItem(@RequestParam(name = "id") Integer id) {
-        ItemModel itemModel = itemService.getItemById(id);
+        ItemModel itemModel = null;
+
+        //先取本地缓存
+        itemModel = (ItemModel) cacheService.getFromCommonCache("item_"+id);
+
+        if(itemModel == null) {
+            //根据商品的id到redis内获取
+            itemModel= (ItemModel) redisTemplate.opsForValue().get("item_"+id);
+
+            //若redis内不存在对应的itemModel，则访问下游service
+            if(itemModel == null) {
+                itemModel = itemService.getItemById(id);
+
+                //设置itemModel到redis内
+                redisTemplate.opsForValue().set("item_"+id,itemModel);
+                redisTemplate.expire("item_"+id,10, TimeUnit.MINUTES);
+            }
+            //填充本地缓存
+            cacheService.setCommonCache("item_"+id,itemModel);
+        }
 
         ItemVO itemVO = this.convertVOFromModel(itemModel);
         return CommonReturnType.create(itemVO);
@@ -84,5 +120,12 @@ public class ItemController extends BaseController {
             return itemVO;
         }).collect(Collectors.toList());
         return CommonReturnType.create(itemVOList);
+    }
+
+    @RequestMapping(value = "/publishpromo",method = RequestMethod.GET) //浏览时服务端用GET请求
+    @ResponseBody
+    public CommonReturnType publishpromo(@RequestParam(name = "id") Integer id) {
+        promoService.publishPromo(id);
+        return CommonReturnType.create(null);
     }
 }

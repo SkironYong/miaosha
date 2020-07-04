@@ -3,11 +3,12 @@ package com.miaoshaproject.service.model;
 import org.joda.time.DateTime;
 
 import javax.xml.crypto.Data;
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.Date;
 
 //秒杀 营销模型
-public class PromoModel {
+public class PromoModel implements Serializable{
     private Integer id;
 
     //秒杀活动状态  1表示还未开始 2 表示进行中 3表示已结束

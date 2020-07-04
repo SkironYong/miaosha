@@ -7,22 +7,24 @@ import com.miaoshaproject.error.EmBusinessError;
 import com.miaoshaproject.response.CommonReturnType;
 import com.miaoshaproject.service.UserService;
 import com.miaoshaproject.service.model.UserModel;
-import org.apache.tomcat.util.security.MD5Encoder;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.client.HttpServerErrorException;
 import sun.misc.BASE64Encoder;
 
 import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Random;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
+/**
+ * @author HP
+ */
 @Controller("user")
 @RequestMapping("/user")
 //跨域请求
@@ -35,6 +37,9 @@ public class UserController extends BaseController{
 
     @Autowired
     HttpServletRequest httpServletRequest;
+
+    @Autowired
+    RedisTemplate redisTemplate;
 
     //用户登录接口
     @RequestMapping(value = "/login",method = {RequestMethod.POST},consumes = {CONTENT_TYPE_FORMED})
@@ -50,10 +55,22 @@ public class UserController extends BaseController{
         UserModel userModel = userService.validateLogin(telphone,this.EncodeByMd5(password));
 
         //将登录凭证加入到用户登陆成功的session内
-        this.httpServletRequest.getSession().setAttribute("IS_LOGIN",true);
-        this.httpServletRequest.getSession().setAttribute("LOGIN_USER",userModel);
 
-        return CommonReturnType.create(null);
+        //修改成若用户登陆验证成功后将对应的登陆信息和登陆凭证一起存入redis中
+
+        //生成登陆凭证token，UUID
+        String uuidToken = UUID.randomUUID().toString();
+        uuidToken = uuidToken.replace("-","");
+        //建立token和用户登录态之间的联系
+        redisTemplate.opsForValue().set(uuidToken,userModel);
+        //设置过期时间1h
+        redisTemplate.expire(uuidToken,1, TimeUnit.HOURS);
+//
+//      this.httpServletRequest.getSession().setAttribute("IS_LOGIN",true);
+//      this.httpServletRequest.getSession().setAttribute("LOGIN_USER",userModel);
+
+        //下发token
+        return CommonReturnType.create(uuidToken);
     }
 
 
@@ -113,8 +130,11 @@ public class UserController extends BaseController{
         return CommonReturnType.create(null);
     }
 
-
-
+    @RequestMapping("/")
+    @ResponseBody
+    public String index() {
+        return "this is index";
+    }
 
     @RequestMapping("/get")
     @ResponseBody

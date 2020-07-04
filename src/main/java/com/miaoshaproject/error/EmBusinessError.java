@@ -1,7 +1,7 @@
 package com.miaoshaproject.error;
 //包装器业务异常类实现
 public enum EmBusinessError implements CommonError{
-    //通用错误类型00001
+    //通用错误类型10001
     //很多不合法的情况可设置统一错误码
     PARAMETER_VALIDATION_ERROR(10001,"参数不合法"),
 
@@ -12,7 +12,8 @@ public enum EmBusinessError implements CommonError{
     USER_LOGIN_FAIL(20002,"用户手机号或密码不正确"),
     USER_NOT_LOGIN(20003,"用户还未登陆"),
     //30000开头为交易信息错误
-    STOCK_NOT_ENOUGH(30001,"库存不足")
+    STOCK_NOT_ENOUGH(30001,"库存不足"),
+    MQ_SEND_FAIL(30002,"库存异步消息失败")
     ;
 
     private int errCode;

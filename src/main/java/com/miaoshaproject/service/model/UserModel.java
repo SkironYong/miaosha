@@ -5,8 +5,9 @@ import org.hibernate.validator.constraints.NotBlank;
 import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
+import java.io.Serializable;
 
-public class UserModel {
+public class UserModel implements Serializable {
     private Integer id;
 
     //引入NotBlank注释，不能为空字符串或NULL,否则报错提示

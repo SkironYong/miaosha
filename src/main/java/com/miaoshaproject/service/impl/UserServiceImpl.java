@@ -14,10 +14,12 @@ import com.miaoshaproject.validator.ValidatorImpl;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class UserServiceImpl implements UserService {
@@ -30,6 +32,10 @@ public class UserServiceImpl implements UserService {
 
     @Autowired
     private ValidatorImpl validator;
+
+    @Autowired
+    private RedisTemplate redisTemplate;
+
     @Override
     public UserModel validateLogin(String telphone, String encrptPassword) throws BusinessException {
         //通过用户的手机获取用户信息
@@ -59,6 +65,18 @@ public class UserServiceImpl implements UserService {
         UserPasswordDO userPasswordDO = userPasswordDOMapper.selectByUserId(userDO.getId());
         return convertFromDataObject(userDO,userPasswordDO);
     }
+
+    @Override
+    public UserModel getUserByIdInCache(Integer id) {
+        UserModel userModel = (UserModel) redisTemplate.opsForValue().get("user_validate_"+id);
+        if(userModel == null) {
+            userModel = this.getUserById(id);
+            redisTemplate.opsForValue().set("user_validate_"+id,userModel);
+            redisTemplate.expire("user_validate_"+id,10, TimeUnit.MINUTES);
+        }
+        return userModel;
+    }
+
     //userDO+userPassword 组装DataObject->UserModel
     private UserModel convertFromDataObject(UserDO userDo, UserPasswordDO userPasswordDO) {
 
@@ -76,8 +94,10 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional
-    //@Transactional保证UserDO和UserPasswordDo在一个事务
+    @Transactional(rollbackFor = Exception.class)
+    /**
+     * @Transactional保证UserDO和UserPasswordDo在一个事务
+     */
     public void register(UserModel userModel) throws BusinessException {
         if(userModel == null) {
             throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR);
@@ -109,7 +129,10 @@ public class UserServiceImpl implements UserService {
         //因为insertSelective是当某一字段不为空时插入数据，为null不改变；而insert操作可能会造成数据覆盖成null
         return ;
     }
-    //UserModel->dataObject
+    /**
+     * UserModel->dataObject
+     */
+
     private UserDO convertFromModel(UserModel userModel) {
         if(userModel == null) {
             return null;
@@ -123,8 +146,10 @@ public class UserServiceImpl implements UserService {
             return null;
         }
         UserPasswordDO userPasswordDO = new UserPasswordDO();
-        userPasswordDO.setEncriptPassword(userModel.getEncrptPassword());//password
-        userPasswordDO.setUserId(userModel.getId());//外键userId
+        //password
+        userPasswordDO.setEncriptPassword(userModel.getEncrptPassword());
+        //外键userId
+        userPasswordDO.setUserId(userModel.getId());
         return userPasswordDO;
     }
 }
