@@ -1,6 +1,7 @@
 package com.miaoshaproject.controller;
 
 import com.alibaba.druid.util.StringUtils;
+import com.google.common.util.concurrent.RateLimiter;
 import com.miaoshaproject.error.BusinessException;
 import com.miaoshaproject.error.EmBusinessError;
 import com.miaoshaproject.mq.MqProducer;
@@ -11,13 +12,20 @@ import com.miaoshaproject.service.PromoService;
 import com.miaoshaproject.service.UserService;
 import com.miaoshaproject.service.model.OrderModel;
 import com.miaoshaproject.service.model.UserModel;
+import com.miaoshaproject.util.CodeUtil;
+import io.netty.handler.codec.http.HttpResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.PostConstruct;
+import javax.imageio.ImageIO;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.awt.image.RenderedImage;
+import java.io.IOException;
+import java.util.Map;
 import java.util.concurrent.*;
 
 @Controller
@@ -45,9 +53,13 @@ public class OrderController extends BaseController {
 
     private ExecutorService executorService;
 
+    private RateLimiter orderCreateRateLimiter;
+
     @PostConstruct
     public void init(){
         executorService = Executors.newFixedThreadPool(30);
+
+        orderCreateRateLimiter = RateLimiter.create(300);
     }
     //封装下单请求
     @RequestMapping(value = "/createorder", method = {RequestMethod.POST}, consumes = {CONTENT_TYPE_FORMED})
@@ -93,6 +105,24 @@ public class OrderController extends BaseController {
 
         return CommonReturnType.create(null);
     }
+    @RequestMapping(value = "/generateverifycode",method = {RequestMethod.POST,RequestMethod.GET})
+    @ResponseBody
+    public void generateeverifycode(HttpServletResponse response) throws BusinessException, IOException {
+        //根据token获取用户信息
+        String token = httpServletRequest.getParameterMap().get("token")[0];
+        if(StringUtils.isEmpty(token)){
+            throw new BusinessException(EmBusinessError.USER_NOT_LOGIN,"用户还未登陆，不能生成验证码");
+        }
+        //获取用户的登陆信息
+        UserModel userModel = (UserModel) redisTemplate.opsForValue().get(token);
+        if(userModel == null){
+            throw new BusinessException(EmBusinessError.USER_NOT_LOGIN,"用户还未登陆，不能生成验证码");
+        }
+        Map<String,Object> map = CodeUtil.generateCodeAndPic();
+        ImageIO.write((RenderedImage) map.get("codePic"), "jpeg", response.getOutputStream());
+        redisTemplate.opsForValue().set("verify_code_"+userModel.getId(),map.get("code"));
+        redisTemplate.expire("verify_code_"+userModel.getId(),10,TimeUnit.MINUTES);
+    }
 
     //生成秒杀令牌
     @RequestMapping(value = "/generatetoken",method = {RequestMethod.POST},consumes={CONTENT_TYPE_FORMED})
@@ -108,6 +138,15 @@ public class OrderController extends BaseController {
         UserModel userModel = (UserModel) redisTemplate.opsForValue().get(token);
         if(userModel == null){
             throw new BusinessException(EmBusinessError.USER_NOT_LOGIN,"用户还未登陆，不能下单");
+        }
+
+        //通过verifycode验证验证码的有效性
+        String redisVerifyCode = (String) redisTemplate.opsForValue().get("verify_code_"+userModel.getId());
+        if(StringUtils.isEmpty(redisVerifyCode)) {
+            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR,"请求非法");
+        }
+        if(!redisVerifyCode.equalsIgnoreCase(redisVerifyCode)) {
+            throw new BusinessException(EmBusinessError.PARAMETER_VALIDATION_ERROR,"请求非法,验证码错误");
         }
         //获取秒杀访问令牌
         String promoToken = promoService.generateSecondKillToken(promoId,itemId,userModel.getId());
